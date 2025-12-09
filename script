@@ -1,0 +1,218 @@
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local player = game.Players.LocalPlayer
+local cam = workspace.CurrentCamera
+
+local animationId = "rbxassetid://13294471966"
+local debounce = false
+local systemEnabled = false
+
+-- Переменные для хранения соединений
+local connections = {}
+local animatorConnection = nil
+local characterAddedConnection = nil
+
+-- GUI Toggle
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "SwipeToggleGui"
+screenGui.ResetOnSpawn = false  -- Важно! GUI не будет сбрасываться при возрождении
+
+local toggleButton = Instance.new("TextButton", screenGui)
+toggleButton.Size = UDim2.new(0, 160, 0, 40)
+toggleButton.Position = UDim2.new(0, 10, 0.85, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+toggleButton.TextColor3 = Color3.new(1, 1, 1)
+toggleButton.TextScaled = true
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.Text = "Instant Twisted: OFF"
+toggleButton.BorderSizePixel = 0
+toggleButton.BackgroundTransparency = 0.1
+toggleButton.AnchorPoint = Vector2.new(0, 0)
+toggleButton.Active = true
+toggleButton.Draggable = true
+
+toggleButton.MouseButton1Click:Connect(function()
+	systemEnabled = not systemEnabled
+	if systemEnabled then
+		toggleButton.Text = "Instant Twisted: ON"
+		toggleButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+	else
+		toggleButton.Text = "Instant Twisted: OFF"
+		toggleButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+	end
+end)
+
+-- Функция для очистки соединений
+local function cleanupConnections()
+	for _, connection in pairs(connections) do
+		if connection then
+			connection:Disconnect()
+		end
+	end
+	connections = {}
+	
+	if animatorConnection then
+		animatorConnection:Disconnect()
+		animatorConnection = nil
+	end
+end
+
+-- Hàm Swipe + Dash
+local function swipeAndDash()
+	if not player.Character then return end
+	
+	print("✅ Swipe + Dash Triggered")
+
+	-- Gửi Remote Dash
+	local args = {
+		[1] = {
+			["Dash"] = Enum.KeyCode.W,
+			["Key"] = Enum.KeyCode.Q,
+			["Goal"] = "KeyPress"
+		}
+	}
+	local char = player.Character
+	if char and char:FindFirstChild("Communicate") then
+		char.Communicate:FireServer(unpack(args))
+	end
+
+	-- Swipe trái
+	local startCFrame = cam.CFrame
+	local leftCFrame = startCFrame * CFrame.Angles(40, math.rad(-90), 180)
+
+	cam.CameraType = Enum.CameraType.Scriptable
+	local tween1 = TweenService:Create(cam, TweenInfo.new(0.1, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = leftCFrame})
+	tween1:Play()
+	tween1.Completed:Wait()
+
+	-- Quay lại
+	task.wait(0.00001)
+	local tween2 = TweenService:Create(cam, TweenInfo.new(0.001, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = startCFrame})
+	tween2:Play()
+	tween2.Completed:Wait()
+
+	-- Xoay phải chéo
+	task.wait(0.1)
+	local angledCFrame = startCFrame * CFrame.Angles(math.rad(-6), math.rad(10), 0)
+	local tween3 = TweenService:Create(cam, TweenInfo.new(0.0001, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = angledCFrame})
+	tween3:Play()
+	tween3.Completed:Wait()
+
+	cam.CameraType = Enum.CameraType.Custom
+end
+
+-- Theo dõi animation
+local function setupMonitor()
+	-- Очищаем старые соединения
+	cleanupConnections()
+	
+	-- Сбрасываем debounce при смене персонажа
+	debounce = false
+	
+	local char = player.Character
+	if not char then return end
+	
+	local function onAnimPlayed(track)
+		if not systemEnabled then return end
+		if not player.Character then return end
+		
+		if track.Animation and track.Animation.AnimationId == animationId then
+			if debounce then return end
+			debounce = true
+			print("🎬 Phát hiện animation:", animationId)
+
+			-- 👉 Lùi lại 1 bước NGAY KHI animation phát hiện
+			local char = player.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local back = hrp.CFrame.LookVector * -1.5
+				hrp.CFrame = hrp.CFrame + back
+			end
+
+			-- 👉 Задержка 0.35 секунд перед swipe + dash
+			task.delay(0.40, function()
+				if player.Character then
+					swipeAndDash()
+				end
+				task.wait(5) -- ⏱ Cooldown 5 giây
+				debounce = false
+			end)
+		end
+	end
+
+	local function bindAnimator(animator)
+		if animatorConnection then
+			animatorConnection:Disconnect()
+		end
+		animatorConnection = animator.AnimationPlayed:Connect(onAnimPlayed)
+	end
+
+	local humanoid = char:WaitForChild("Humanoid")
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+
+	if animator then
+		bindAnimator(animator)
+	else
+		local connection = humanoid.ChildAdded:Connect(function(child)
+			if child:IsA("Animator") then
+				bindAnimator(child)
+			end
+		end)
+		table.insert(connections, connection)
+	end
+	
+	-- Отслеживаем смерть персонажа
+	local humanoid = char:WaitForChild("Humanoid")
+	local connection = humanoid.Died:Connect(function()
+		-- При смерти очищаем debounce
+		debounce = false
+		print("💀 Персонаж умер, сброс debounce")
+	end)
+	table.insert(connections, connection)
+end
+
+-- Автоматическая переподписка при смене персонажа
+local function initialize()
+	-- Отписываемся от старого соединения, если оно есть
+	if characterAddedConnection then
+		characterAddedConnection:Disconnect()
+	end
+	
+	-- Подписываемся на добавление нового персонажа
+	characterAddedConnection = player.CharacterAdded:Connect(function(char)
+		-- Небольшая задержка для инициализации персонажа
+		task.wait(0.5)
+		setupMonitor()
+	end)
+	
+	-- Если персонаж уже есть
+	if player.Character then
+		task.wait(0.5)  -- Даем время на инициализацию
+		setupMonitor()
+	end
+end
+
+-- Инициализация при загрузке скрипта
+initialize()
+
+-- Очистка при отключении скрипта
+game:GetService("StarterGui"):SetCore("ResetButtonCallback", false)
+
+local function onReset()
+	-- При перезагрузке персонажа через кнопку Reset
+	debounce = false
+	if player.Character then
+		task.wait(1)  -- Даем время на возрождение
+		setupMonitor()
+	end
+end
+
+game:GetService("StarterGui"):SetCore("ResetButtonCallback", onReset)
+
+-- Очистка при удалении GUI
+screenGui.Destroying:Connect(function()
+	cleanupConnections()
+	if characterAddedConnection then
+		characterAddedConnection:Disconnect()
+	end
+end)
