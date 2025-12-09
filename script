@@ -130,7 +130,7 @@ local function setupMonitor()
 			end
 
 			-- 👉 Задержка 0.35 секунд перед swipe + dash
-			task.delay(0.435, function()
+			task.delay(0.43, function()
 				if player.Character then
 					swipeAndDash()
 				end
