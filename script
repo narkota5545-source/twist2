@@ -93,7 +93,7 @@ local function swipeAndDash()
 
 	-- Xoay phải chéo
 	task.wait(0.1)
-	local angledCFrame = startCFrame * CFrame.Angles(math.rad(-6), math.rad(7), 0)
+	local angledCFrame = startCFrame * CFrame.Angles(math.rad(-6), math.rad(6), 0)
 	local tween3 = TweenService:Create(cam, TweenInfo.new(0.0001, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {CFrame = angledCFrame})
 	tween3:Play()
 	tween3.Completed:Wait()
@@ -125,7 +125,7 @@ local function setupMonitor()
 			local char = player.Character
 			local hrp = char and char:FindFirstChild("HumanoidRootPart")
 			if hrp then
-				local back = hrp.CFrame.LookVector * -1.5
+				local back = hrp.CFrame.LookVector * -1
 				hrp.CFrame = hrp.CFrame + back
 			end
 
